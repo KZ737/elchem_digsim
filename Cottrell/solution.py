@@ -11,26 +11,27 @@ class Cell:
         self.cinf = cinf
         self.D = D
         self.name = name
-        self.numOfCells = int(self.x / self.dx)
-        self.cell = np.full(self.numOfCells, self.cinf)
+        self.createCell()
+        #self.numOfElements = int(self.x / self.dx)
+        #self.cell = np.full(self.numOfElements, self.cinf)
 
     def __str__(self):
         return str(self.cell)
 
     def createCell(self):
-        self.numOfCells = int(self.x / self.dx)
-        self.cell = np.full(self.numOfCells, self.cinf)
+        self.numOfElements = int(self.x / self.dx)
+        self.cell = np.full(self.numOfElements, self.cinf)
 
     def electrodeReaction(self):
         self.cell[0] = 0
 
     def setdt(self, dt: float):
-        transformMatrix = sp.sparse.diags([1, -2, 1], [-1, 0, 1], shape = (self.numOfCells, self.numOfCells))
+        transformMatrix = sp.sparse.diags([1, -2, 1], [-1, 0, 1], shape = (self.numOfElements, self.numOfElements))
         transformMatrix = transformMatrix.tocsc()
         transformMatrix[0, 0] = -1
-        transformMatrix[self.numOfCells-1, self.numOfCells-1] = -1
+        transformMatrix[self.numOfElements-1, self.numOfElements-1] = -1
         transformMatrix = self.D * dt / (self.dx**2) * transformMatrix
-        transformMatrix = sp.sparse.linalg.expm(transformMatrix)
+        transformMatrix = sp.sparse.linalg.expm(transformMatrix) #  --> look up decorators
         self.__transformMatrix = transformMatrix
 
     def propagate(self):
@@ -111,14 +112,14 @@ class Experiment:
 
     def plot(self):
         for cell in self.cells:
-            xcoords = np.linspace(0, cell.x, cell.numOfCells, False)
+            xcoords = np.linspace(0, cell.x, cell.numOfElements, False)
             plt.plot(xcoords, cell.cell, label = cell.name)
         plt.legend()
         plt.show()
 
     def plotNoShow(self, plot: plt.figure):
         for cell in self.cells:
-            xcoords = np.linspace(0, cell.x, cell.numOfCells, False)
+            xcoords = np.linspace(0, cell.x, cell.numOfElements, False)
             plot.plot(xcoords, cell.cell, label = cell.name)
         plot.legend()
 
@@ -209,6 +210,7 @@ newSimulation.addExperiment(2*t, dt, "Double time")
 newSimulation.addExperiment(t, dt*2, "Half time precision")
 newSimulation.addCell(-1, x, dx, cinf, D, "Basic cell")
 newSimulation.addCell(-1, x, dx, cinf, 10*D, "Cell with 10x diffusion")
+newSimulation.addCell(-1, x, dx/10, cinf, 10*D, "Most accurate cell with 10x diffusion")
 newSimulation.addCell(-1, x, dx/2, cinf, D, "More accurate cell")
 newSimulation.addCell(-1, x, dx/10, cinf, D, "Most accurate cell")
 newSimulation.addCell("Basic experiment", 2*x, dx, cinf, D, "Double length cell")
