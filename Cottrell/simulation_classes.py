@@ -73,7 +73,7 @@ class Experiment:
         self.cells.append(newCell)
         self.cellnames.append(name)
 
-    def modifyCellParameter(self, cellID: str | int, param: str, newVal: str | float):
+    def modifyCellParameter(self, cellID: str | int, param: str, newVal: str | float, padeparams: tuple):
         if type(cellID) == int:
             index = cellID
         else:
@@ -82,16 +82,16 @@ class Experiment:
         if param == "name":
             self.cellnames[index] = newVal
         else:
-            self.cells[index].setdt(self.dt)
+            self.cells[index].setdt(self.dt, padeparams)
 
-    def modifyExperimentParameter(self, param: str, newVal: str | float):
+    def modifyExperimentParameter(self, param: str, newVal: str | float, padeparams: tuple):
         setattr(self, param, newVal)
         if param == "t":
             self.numOfTimesteps = int(self.t / self.dt)
         elif param == "dt":
             self.numOfTimesteps = int(self.t / self.dt)
             for cell in self.cells:
-                cell.setdt(self.dt)
+                cell.setdt(self.dt, padeparams)
     
     def electrodeReaction(self):
         for cell in self.cells:
@@ -160,12 +160,17 @@ class Simulation:
             for experiment in self.experiments:
                 experiment.addCell(x, dx, cinf, D, name, self.padeparams)
 
+    def modifySimulationParameter(self, param: str, newVal: tuple | str):
+        setattr(self, param, newVal)
+        for experiment in self.experiments:
+            experiment.modifyExperimentParameter("dt", experiment.dt, self.padeparams)
+
     def modifyExperimentParameter(self, experimentID: str | int, param: str, newVal: float):
         if type(experimentID) == int:
             index = experimentID
         else:
             index = self.experimentnames.index(experimentID)
-        self.experiments[index].modifyExperimentParameter(param, newVal)
+        self.experiments[index].modifyExperimentParameter(param, newVal, self.padeparams)
         if param == "name":
             self.experimentnames[index] = newVal
 
@@ -174,7 +179,7 @@ class Simulation:
             index = experimentID
         else:
             index = self.experimentnames.index(experimentID)
-        self.experiments[index].modifyCellParameter(cellID, param, newVal)
+        self.experiments[index].modifyCellParameter(cellID, param, newVal, self.padeparams)
 
     def simulate(self):
         for experiment in self.experiments:
@@ -245,6 +250,29 @@ class Program:
             for simulation in self.simulations:
                 simulation.addCell(experimentID, x, dx, cinf, D, name)
 
+    def modifySimulationParameter(self, simulationID: str | int, param: str, newVal: tuple):
+        if type(simulationID) == int:
+            index = simulationID
+        else:
+            index = self.simulationnames.index(simulationID)
+        self.simulations[index].modifySimulationParameter(param, newVal)
+        if param == "name":
+            self.simulationnames[index] = newVal
+    
+    def modifyExperimentParameter(self, simulationID: str | int, experimentID: str | int, param: str, newVal: float):
+        if type(simulationID) == int:
+            index = simulationID
+        else:
+            index = self.simulationnames.index(simulationID)
+        self.simulations[index].modifyExperimentParameter(experimentID, param, newVal)
+
+    def modifyCellParameter(self, simulationID: str | int, experimentID: str | int, cellID: str | int, param: str, newVal: float):
+        if type(simulationID) == int:
+            index = simulationID
+        else:
+            index = self.simulationnames.index(simulationID)
+        self.simulations[index].modifyCellParameter(experimentID, cellID, param, newVal)
+
     def simulate(self):
         for simulation in self.simulations:
             simulation.simulate()
@@ -253,3 +281,18 @@ class Program:
         for simulation in self.simulations:
             simulation.plotNoShow()
         plt.show()
+
+    def __str__(self):
+        if not self.simulations:
+            programString = "No simulations in the program."
+            return programString
+        programString = "Simulations in this program:\n"
+        for simulation in self.simulations:
+            programString += "Simulation " + simulation.name + "\n"
+        return programString
+
+    def __len__(self):
+        return len(self.simulations)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(number of simulations={len(self.simulations)})"
