@@ -6,8 +6,9 @@ from simulation_classes import Program
 start_time = time.time()
 ### Preamble: basic quantities and constants of the simulation
 F = 96485.3     # C/mol
+z = 1
 x = 0.1         # cm
-dx = 0.01      # cm = 10 um
+dx = 0.001      # cm = 10 um
 t = 10          # s
 dt = 0.001      # s = 1 ms
 D = 1e-6        # cm2/s
@@ -15,15 +16,17 @@ cinf = 1e-6     # mol/cm3
 
 program = Program()
 program.addSimulation("Simulation built-in exp")
-program.addSimulation("Simulation 1, 1 Padé")
+program.addSimulation("Simulation 1, 1 Padé", (1, 1))
+program.addSimulation("Explicit Euler", (1, 0))
+program.addSimulation("Implicit Euler", (0, 1))
 program.addExperiment(-1, t, dt, "Basic Experiment")
-program.addExperiment(-1, 2*t, dt, "Double time")
-program.addExperiment(-1, t, dt*2, "Half time precision")
+#program.addExperiment(-1, 2*t, dt, "Double time")
+#program.addExperiment(-1, t, dt*2, "Half time precision")
 program.addCell(-1, -1, x, dx, cinf, D, "Basic cell")
-program.addCell(-1, -1, x, dx, cinf, 10*D, "Cell with 10x diffusion")
-program.addCell(-1, -1, x, dx/10, cinf, 10*D, "Most accurate cell with 10x diffusion")
-program.addCell(-1, -1, x, dx/2, cinf, D, "More accurate cell")
-program.addCell(-1, -1, x, dx/10, cinf, D, "Most accurate cell")
+#program.addCell(-1, -1, x, dx, cinf, 10*D, "Cell with 10x diffusion")
+#program.addCell(-1, -1, x, dx/10, cinf, 10*D, "Most accurate cell with 10x diffusion")
+#program.addCell(-1, -1, x, dx/2, cinf, D, "More accurate cell")
+#program.addCell(-1, -1, x, dx/10, cinf, D, "Most accurate cell")
 '''
 newSimulation = Simulation("Simulation")
 newSimulation.addExperiment(t, dt, "Basic experiment")
@@ -66,7 +69,8 @@ newSimulation1.simulate()
 '''
 program.simulate()
 print("--- %s seconds ---" % (time.time() - start_time))
-program.plot()
+#program.plotSimulations()
+program.plotCells()
 '''
 newSimulation.plot()
 newSimulation1.plot()

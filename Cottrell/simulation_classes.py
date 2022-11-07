@@ -11,6 +11,9 @@ PROJECT_ROOT = os.path.abspath(os.path.join(
 sys.path.append(PROJECT_ROOT)
 import exp_approximations as ea
 
+F = 96485
+z = 1
+
 class Cell:
     def __init__(self, x: float, dx: float, cinf: float, D: float, name: str):
         self.x = x
@@ -19,6 +22,7 @@ class Cell:
         self.D = D
         self.name = name
         self.createCell()
+        self.current = []
         #self.numOfElements = int(self.x / self.dx)
         #self.cell = np.full(self.numOfElements, self.cinf)
 
@@ -28,11 +32,16 @@ class Cell:
     def createCell(self):
         self.numOfElements = int(self.x / self.dx)
         self.cell = np.full(self.numOfElements, self.cinf)
+        self.cell[0] = 0
 
     def electrodeReaction(self):
+        global F
+        global z
+        self.current.append(self.dx * F * z * self.cell[0] / self.dt)
         self.cell[0] = 0
 
     def setdt(self, dt: float, padeparams: tuple):
+        self.dt = dt
         transformMatrix = sp.sparse.diags([1, -2, 1], [-1, 0, 1], shape = (self.numOfElements, self.numOfElements))
         transformMatrix = transformMatrix.tocsc()
         transformMatrix[0, 0] = -1
@@ -277,9 +286,32 @@ class Program:
         for simulation in self.simulations:
             simulation.simulate()
 
-    def plot(self):
+    def plotSimulations(self):
         for simulation in self.simulations:
             simulation.plotNoShow()
+        plt.show()
+
+    def plotCells(self):
+        concProfiles = {}
+        currents = {}
+        for simulation in self.simulations:
+            for experiment in simulation.experiments:
+                for cell in experiment.cells:
+                    if cell.name not in concProfiles.keys():
+                        newConcFigure, newConcSubplot = plt.subplots()
+                        newCurrFigure, newCurrSubplot = plt.subplots()
+                        newConcFigure.suptitle('Cell ' + cell.name)
+                        newCurrFigure.suptitle('Cell ' + cell.name)
+                        concProfiles.update({cell.name: [newConcFigure, newConcSubplot]})
+                        currents.update({cell.name: [newCurrFigure, newCurrSubplot]})
+                    xcoords = np.linspace(0, cell.x, cell.numOfElements, False)
+                    concProfiles[cell.name][1].plot(xcoords, cell.cell, label = simulation.name + " " + experiment.name + " " + cell.name)
+                    tcoords = np.linspace(0, experiment.t, int(experiment.t/experiment.dt), False)
+                    currents[cell.name][1].plot(tcoords, cell.current, label = simulation.name + " " + experiment.name + " " + cell.name)
+        for concProfile in concProfiles.values():
+            concProfile[0].legend()
+        for current in currents.values():
+            current[0].legend()
         plt.show()
 
     def __str__(self):
