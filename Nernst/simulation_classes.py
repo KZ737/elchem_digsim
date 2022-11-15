@@ -13,6 +13,8 @@ import exp_approximations as ea
 
 F = 96485
 z = 1
+R = 8.3145
+T = 298.15
 
 class Cell:
     def __init__(self, x: float, dx: float, cinf: float, D: float, name: str):
@@ -31,14 +33,19 @@ class Cell:
 
     def createCell(self):
         self.numOfElements = int(self.x / self.dx)
-        self.cell = np.full(self.numOfElements, self.cinf)
-        #self.cell[0] = 0
+        self.cell = [np.full(self.numOfElements, self.cinf) for i in range(2)]
 
-    def electrodeReaction(self):
+    def electrodeReaction(self, setVolt: float):
         global F
         global z
-        self.current.append(self.dx * F * z * self.cell[0] / self.dt)
-        self.cell[0] = 0
+        global R
+        global T
+        expTerm = np.exp(setVolt*z*F/(R*T))
+        newOx = ((2*self.cinf) * expTerm) / (expTerm + 1)
+        newRed = (2*self.cinf) / (expTerm + 1)
+        self.current.append(self.dx * F * z * (newOx - self.cell[0][0]) / self.dt)
+        self.cell[0][0] = newOx
+        self.cell[1][0] = newRed
 
     def setdt(self, dt: float, padeparams: tuple):
         self.dt = dt
@@ -55,7 +62,8 @@ class Cell:
         self.__transformMatrix = transformMatrix
 
     def propagate(self):
-        self.cell = self.__transformMatrix.dot(self.cell)
+        for i in range(2):
+            self.cell[i] = self.__transformMatrix.dot(self.cell[i])
 
     def modifyParameter(self, param: str, newVal: str | float):
         setattr(self, param, newVal)
@@ -66,13 +74,23 @@ class Cell:
 
 
 class Experiment:
-    def __init__(self, t: float, dt: float, name: str):
+    def __init__(self, t: float, dt: float, Vmin: float, Vmax: float, sweepRate: float, name: str):
         self.t = t
         self.dt = dt
         self.name = name
+        self.Vmin = Vmin
+        self.Vmax = Vmax
+        self.sweepRate = sweepRate
         self.numOfTimesteps = int(self.t / self.dt)
         self.cells = []
         self.cellnames = []
+        self.calculateVoltages()
+
+    def calculateVoltages(self):
+        tcoords = np.linspace(0, self.t, int(self.t/self.dt), False)
+        amplitude = self.Vmax - self.Vmin
+        period = amplitude / self.sweepRate
+        self.voltages = ( ( 4 * amplitude / period ) * abs( ( (tcoords - ( period / 4 ) ) % period) - ( period / 2 ) ) ) - amplitude
 
     def addCell(self, x: float, dx: float, cinf: float, D: float, name: str = "", padeparams: tuple = (-1,)):
         if not name:
@@ -102,17 +120,17 @@ class Experiment:
             for cell in self.cells:
                 cell.setdt(self.dt, padeparams)
     
-    def electrodeReaction(self):
+    def electrodeReaction(self, voltage: float):
         for cell in self.cells:
-            cell.electrodeReaction()
+            cell.electrodeReaction(voltage)
 
     def propagate(self):
         for cell in self.cells:
             cell.propagate()
 
     def simulate(self):
-        for i in range(self.numOfTimesteps):
-            self.electrodeReaction()
+        for voltage in self.voltages:
+            self.electrodeReaction(voltage)
             self.propagate()
 
     def __str__(self):
@@ -133,15 +151,28 @@ class Experiment:
     def plot(self):
         for cell in self.cells:
             xcoords = np.linspace(0, cell.x, cell.numOfElements, False)
-            plt.plot(xcoords, cell.cell, label = cell.name)
+            plt.plot(xcoords, cell.cell[0], label = cell.name+" Ox")
+            plt.plot(xcoords, cell.cell[1], label = cell.name+" Red")
         plt.legend()
         plt.show()
 
     def plotNoShow(self, plot: plt.figure):
         for cell in self.cells:
             xcoords = np.linspace(0, cell.x, cell.numOfElements, False)
-            plot.plot(xcoords, cell.cell, label = cell.name)
+            plt.plot(xcoords, cell.cell[0], label = cell.name+" Ox")
+            plt.plot(xcoords, cell.cell[1], label = cell.name+" Red")
         plot.legend()
+
+    def plotCV(self):
+        for cell in self.cells:
+            plt.plot(self.voltages, cell.current, label = cell.name)
+        plt.legend()
+        plt.show()
+    
+    def plotCVNoShow(self, plot: plt.figure):
+        for cell in self.cells:
+            plt.plot(self.voltages, cell.current, label = cell.name)
+        plt.legend()
 
 
 class Simulation:
@@ -151,10 +182,10 @@ class Simulation:
         self.experiments = []
         self.experimentnames = []
     
-    def addExperiment(self, t: float, dt: float, name: str = ""):
+    def addExperiment(self, t: float, dt: float, Vmin: float, Vmax: float, sweepRate: float, name: str = ""):
         if not name:
             name = str(len(self.experiments))
-        newExperiment = Experiment(t, dt, name)
+        newExperiment = Experiment(t, dt, Vmin, Vmax, sweepRate, name)
         self.experiments.append(newExperiment)
         self.experimentnames.append(name)
 
@@ -223,6 +254,22 @@ class Simulation:
             figure.suptitle('Simulation ' + self.name + ': ' + repr(experiment))
             subplot = figure.add_subplot()
             experiment.plotNoShow(subplot)
+
+    def plotCV(self):
+        for experiment in self.experiments:
+            figure = plt.figure()
+            figure.suptitle('Simulation ' + self.name + ': ' + repr(experiment))
+            subplot = figure.add_subplot()
+            experiment.plotCVNoShow(subplot)
+        plt.show()
+
+    def plotNoShow(self):
+        for experiment in self.experiments:
+            figure = plt.figure()
+            figure.suptitle('Simulation ' + self.name + ': ' + repr(experiment))
+            subplot = figure.add_subplot()
+            experiment.plotCVNoShow(subplot)
+
         
 
 class Program:
@@ -237,16 +284,16 @@ class Program:
         self.simulations.append(newSimulation)
         self.simulationnames.append(name)
 
-    def addExperiment(self, simulationID: str | int, t: float, dt: float, name: str = ""):
+    def addExperiment(self, simulationID: str | int, t: float, dt: float, Vmin: float, Vmax: float, sweepRate: float, name: str = ""):
         if type(simulationID) == str:
             index = self.simulationnames.index(simulationID)
         else:
             index = simulationID
         if simulationID != -1:
-            self.simulations[index].addExperiment(t, dt, name)
+            self.simulations[index].addExperiment(t, dt, Vmin, Vmax, sweepRate, name)
         else:
             for simulation in self.simulations:
-                simulation.addExperiment(t, dt, name)
+                simulation.addExperiment(t, dt, Vmin, Vmax, sweepRate, name)
 
     def addCell(self, simulationID: str | int, experimentID: str | int, x: float, dx: float, cinf: float, D: float, name: str = ""):
         if type(simulationID) == str:
@@ -290,6 +337,11 @@ class Program:
         for simulation in self.simulations:
             simulation.plotNoShow()
         plt.show()
+    
+    def plotSimulationsCV(self):
+        for simulation in self.simulations:
+            simulation.plotCVNoShow()
+        plt.show()
 
     def plotCells(self):
         concProfiles = {}
@@ -305,13 +357,28 @@ class Program:
                         concProfiles.update({cell.name: [newConcFigure, newConcSubplot]})
                         currents.update({cell.name: [newCurrFigure, newCurrSubplot]})
                     xcoords = np.linspace(0, cell.x, cell.numOfElements, False)
-                    concProfiles[cell.name][1].plot(xcoords, cell.cell, label = simulation.name + " " + experiment.name + " " + cell.name)
+                    concProfiles[cell.name][1].plot(xcoords, cell.cell[0], label = simulation.name + " " + experiment.name + " " + cell.name + " Ox")
+                    concProfiles[cell.name][1].plot(xcoords, cell.cell[1], label = simulation.name + " " + experiment.name + " " + cell.name + " Red")
                     tcoords = np.linspace(0, experiment.t, int(experiment.t/experiment.dt), False)
                     currents[cell.name][1].plot(tcoords, cell.current, label = simulation.name + " " + experiment.name + " " + cell.name)
         for concProfile in concProfiles.values():
             concProfile[0].legend()
         for current in currents.values():
             current[0].legend()
+        plt.show()
+
+    def plotAllCV(self):
+        CVs = {}
+        for simulation in self.simulations:
+            for experiment in simulation.experiments:
+                for cell in experiment.cells:
+                    if cell.name not in CVs.keys():
+                        newCVFigure, newCVSubplot = plt.subplots()
+                        newCVFigure.suptitle('Cell ' + cell.name)
+                        CVs.update({cell.name: [newCVFigure, newCVSubplot]})
+                    CVs[cell.name][1].plot(experiment.voltages, cell.current, label = simulation.name + " " + experiment.name + " " + cell.name)
+        for CV in CVs.values():
+            CV[0].legend()
         plt.show()
 
     def __str__(self):

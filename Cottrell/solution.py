@@ -6,7 +6,6 @@ from simulation_classes import Program
 start_time = time.time()
 ### Preamble: basic quantities and constants of the simulation
 F = 96485.3     # C/mol
-z = 1
 x = 0.1         # cm
 dx = 0.001      # cm = 10 um
 t = 10          # s
@@ -15,8 +14,8 @@ D = 1e-6        # cm2/s
 cinf = 1e-6     # mol/cm3
 
 program = Program()
-program.addSimulation("Simulation built-in exp")
-program.addSimulation("Simulation 1, 1 Padé", (1, 1))
+program.addSimulation("Built-in exp")
+program.addSimulation("1, 1 Padé", (1, 1))
 program.addSimulation("Explicit Euler", (1, 0))
 program.addSimulation("Implicit Euler", (0, 1))
 program.addExperiment(-1, t, dt, "Basic Experiment")
