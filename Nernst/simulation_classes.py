@@ -41,8 +41,9 @@ class Cell:
         global R
         global T
         expTerm = np.exp(setVolt*z*F/(R*T))
-        newOx = ((2*self.cinf) * expTerm) / (expTerm + 1)
-        newRed = (2*self.cinf) / (expTerm + 1)
+        cTot = self.cell[0][0] + self.cell[1][0]
+        newOx = ((cTot) * expTerm) / (expTerm + 1)
+        newRed = (cTot) / (expTerm + 1)
         self.current.append(self.dx * F * z * (newOx - self.cell[0][0]) / self.dt)
         self.cell[0][0] = newOx
         self.cell[1][0] = newRed
@@ -74,13 +75,14 @@ class Cell:
 
 
 class Experiment:
-    def __init__(self, t: float, dt: float, Vmin: float, Vmax: float, sweepRate: float, name: str):
+    def __init__(self, t: float, dt: float, Vmin: float, Vmax: float, sweepRate: float, startVoltage: float, name: str):
         self.t = t
         self.dt = dt
         self.name = name
         self.Vmin = Vmin
         self.Vmax = Vmax
         self.sweepRate = sweepRate
+        self.startVoltage = startVoltage
         self.numOfTimesteps = int(self.t / self.dt)
         self.cells = []
         self.cellnames = []
@@ -88,9 +90,10 @@ class Experiment:
 
     def calculateVoltages(self):
         tcoords = np.linspace(0, self.t, int(self.t/self.dt), False)
-        amplitude = self.Vmax - self.Vmin
+        amplitude = (self.Vmax - self.Vmin) / 2
+        offset = (self.Vmax + self.Vmin) / 2
         period = amplitude / self.sweepRate
-        self.voltages = ( ( 4 * amplitude / period ) * abs( ( (tcoords - ( period / 4 ) ) % period) - ( period / 2 ) ) ) - amplitude
+        self.voltages = ( ( 4 * amplitude / period ) * abs( ( ( tcoords  - ( (self.startVoltage - self.Vmax) * period / ((self.Vmin - self.Vmax) * 2) )) % period) - ( period / 2 ) ) ) - amplitude + offset
 
     def addCell(self, x: float, dx: float, cinf: float, D: float, name: str = "", padeparams: tuple = (-1,)):
         if not name:
@@ -182,10 +185,10 @@ class Simulation:
         self.experiments = []
         self.experimentnames = []
     
-    def addExperiment(self, t: float, dt: float, Vmin: float, Vmax: float, sweepRate: float, name: str = ""):
+    def addExperiment(self, t: float, dt: float, Vmin: float, Vmax: float, sweepRate: float, startVoltage: float, name: str = ""):
         if not name:
             name = str(len(self.experiments))
-        newExperiment = Experiment(t, dt, Vmin, Vmax, sweepRate, name)
+        newExperiment = Experiment(t, dt, Vmin, Vmax, sweepRate, startVoltage, name)
         self.experiments.append(newExperiment)
         self.experimentnames.append(name)
 
@@ -284,16 +287,16 @@ class Program:
         self.simulations.append(newSimulation)
         self.simulationnames.append(name)
 
-    def addExperiment(self, simulationID: str | int, t: float, dt: float, Vmin: float, Vmax: float, sweepRate: float, name: str = ""):
+    def addExperiment(self, simulationID: str | int, t: float, dt: float, Vmin: float, Vmax: float, sweepRate: float, startVoltage: float, name: str = ""):
         if type(simulationID) == str:
             index = self.simulationnames.index(simulationID)
         else:
             index = simulationID
         if simulationID != -1:
-            self.simulations[index].addExperiment(t, dt, Vmin, Vmax, sweepRate, name)
+            self.simulations[index].addExperiment(t, dt, Vmin, Vmax, sweepRate, startVoltage, name)
         else:
             for simulation in self.simulations:
-                simulation.addExperiment(t, dt, Vmin, Vmax, sweepRate, name)
+                simulation.addExperiment(t, dt, Vmin, Vmax, sweepRate, startVoltage, name)
 
     def addCell(self, simulationID: str | int, experimentID: str | int, x: float, dx: float, cinf: float, D: float, name: str = ""):
         if type(simulationID) == str:
