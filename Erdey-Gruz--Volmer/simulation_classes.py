@@ -17,12 +17,15 @@ R = 8.3145
 T = 298.15
 
 class Cell:
-    def __init__(self, x: float, dx: float, cinf: float, D: float, E0: float, name: str):
+    def __init__(self, x: float, dx: float, cinf: float, D: float, A: float, E0: float, k: float, alpha: float, name: str):
         self.x = x
         self.dx = dx
         self.cinf = cinf
         self.D = D
+        self.A = A
         self.E0 = E0
+        self.k = k
+        self.alpha = alpha
         self.name = name
         self.createCell()
         self.current = []
@@ -36,16 +39,17 @@ class Cell:
         self.numOfElements = int(self.x / self.dx)
         self.cell = [np.full(self.numOfElements, self.cinf) for i in range(2)]
 
-    def electrodeReaction(self, setVolt: float):
+    def electrodeReaction(self, setVolt: float, dt: float):
         global F
         global z
         global R
         global T
-        expTerm = np.exp((setVolt-self.E0)*z*F/(R*T))
+        kOx = (self.k / self.dx) * np.exp(self.alpha * z * F * (setVolt - self.E0) / (R * T))
+        kRed = (self.k / self.dx) * np.exp(-1*(1-self.alpha) * z * F * (setVolt - self.E0) / (R * T))
         cTot = self.cell[0][0] + self.cell[1][0]
-        newOx = (cTot * expTerm) / (expTerm + 1)
-        newRed = cTot / (expTerm + 1)
-        self.current.append(self.dx * F * z * (newOx - self.cell[0][0]) / self.dt)
+        newOx = ( (kOx * cTot) + (kRed * self.cell[0][0] - kOx * self.cell[1][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
+        newRed = ( (kRed * cTot) + (kOx * self.cell[1][0] - kRed * self.cell[0][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
+        self.current.append(z * F * self.A * self.dx * (newOx - self.cell[0][0]) / self.dt)
         self.cell[0][0] = newOx
         self.cell[1][0] = newRed
 
@@ -96,10 +100,10 @@ class Experiment:
         period = amplitude / self.sweepRate
         self.voltages = ( ( 4 * amplitude / period ) * abs( ( ( tcoords  - ( (self.startVoltage - self.Vmax) * period / ((self.Vmin - self.Vmax) * 2) )) % period) - ( period / 2 ) ) ) - amplitude + offset
 
-    def addCell(self, x: float, dx: float, cinf: float, D: float, E0: float, name: str = "", padeparams: tuple = (-1,)):
+    def addCell(self, x: float, dx: float, cinf: float, D: float, A: float, E0: float, k: float, alpha: float, name: str = "", padeparams: tuple = (-1,)):
         if not name:
             name = str(len(self.cells))
-        newCell = Cell(x, dx, cinf, D, E0, name)
+        newCell = Cell(x, dx, cinf, D, A, E0, k, alpha, name)
         newCell.setdt(self.dt, padeparams)
         self.cells.append(newCell)
         self.cellnames.append(name)
@@ -126,7 +130,7 @@ class Experiment:
     
     def electrodeReaction(self, voltage: float):
         for cell in self.cells:
-            cell.electrodeReaction(voltage)
+            cell.electrodeReaction(voltage, self.dt)
 
     def propagate(self):
         for cell in self.cells:
@@ -193,16 +197,16 @@ class Simulation:
         self.experiments.append(newExperiment)
         self.experimentnames.append(name)
 
-    def addCell(self, experimentID: str | int, x: float, dx: float, cinf: float, D: float, E0: float, name: str = ""):
+    def addCell(self, experimentID: str | int, x: float, dx: float, cinf: float, D: float, A: float, E0: float, k: float, alpha: float, name: str = ""):
         if type(experimentID) == str:
             index = self.experimentnames.index(experimentID)
         else:
             index = experimentID
         if experimentID != -1:
-            self.experiments[index].addCell(x, dx, cinf, D, E0, name, self.padeparams)
+            self.experiments[index].addCell(x, dx, cinf, D, A, E0, k, alpha, name, self.padeparams)
         else:
             for experiment in self.experiments:
-                experiment.addCell(x, dx, cinf, D, E0, name, self.padeparams)
+                experiment.addCell(x, dx, cinf, D, A, E0, k, alpha, name, self.padeparams)
 
     def modifySimulationParameter(self, param: str, newVal: tuple | str):
         setattr(self, param, newVal)
@@ -299,16 +303,16 @@ class Program:
             for simulation in self.simulations:
                 simulation.addExperiment(t, dt, Vmin, Vmax, sweepRate, startVoltage, name)
 
-    def addCell(self, simulationID: str | int, experimentID: str | int, x: float, dx: float, cinf: float, D: float, E0: float, name: str = ""):
+    def addCell(self, simulationID: str | int, experimentID: str | int, x: float, dx: float, cinf: float, D: float, A: float, E0: float, k: float, alpha: float, name: str = ""):
         if type(simulationID) == str:
             index = self.simulationnames.index(simulationID)
         else:
             index = simulationID
         if simulationID != -1:
-            self.simulations[index].addCell(experimentID, x, dx, cinf, D, E0, name)
+            self.simulations[index].addCell(experimentID, x, dx, cinf, D, A, E0, k, alpha, name)
         else:
             for simulation in self.simulations:
-                simulation.addCell(experimentID, x, dx, cinf, D, E0, name)
+                simulation.addCell(experimentID, x, dx, cinf, D, A, E0, k, alpha, name)
 
     def modifySimulationParameter(self, simulationID: str | int, param: str, newVal: tuple):
         if type(simulationID) == int:
