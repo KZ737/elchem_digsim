@@ -16,6 +16,7 @@ E0 = 0          # V
 k = 1e-6        # s-1
 alpha = 0.5     # 1
 A = 1           # cm2
+Rsol = 10       # ohm
 
 program = Program()
 program.addSimulation("Built-in exp")
@@ -25,13 +26,14 @@ program.addSimulation("Built-in exp")
 program.addExperiment(-1, t, dt, -1, 1, 0.05, 0, "Basic Experiment")
 #program.addExperiment(-1, 2*t, dt, "Double time")
 #program.addExperiment(-1, t, dt*2, "Half time precision")
-program.addCell(-1, -1, x, dx, cinf, D, A, E0, k, alpha, "Basic cell")
-#program.addCell(-1, -1, x, dx, cinf, 10*D, "Cell with 10x diffusion")
+program.addCell(-1, -1, x, dx, cinf, D, A, E0, Rsol, k, alpha, "Basic cell")
+#program.addCell(-1, -1, x, dx, cinf, 10*D, A, E0, k, alpha, "Cell with 10x diffusion")
 #program.addCell(-1, -1, x, dx/10, cinf, 10*D, "Most accurate cell with 10x diffusion")
 #program.addCell(-1, -1, x, dx/2, cinf, D, "More accurate cell")
 #program.addCell(-1, -1, x, dx/10, cinf, D, "Most accurate cell")
 program.simulate()
 print("--- %s seconds ---" % (time.time() - start_time))
 #program.plotSimulations()
-program.plotCells()
+#program.plotCells()
 program.plotAllCV()
+program.showPlots()

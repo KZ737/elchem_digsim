@@ -17,20 +17,19 @@ R = 8.3145
 T = 298.15
 
 class Cell:
-    def __init__(self, x: float, dx: float, cinf: float, D: float, A: float, E0: float, k: float, alpha: float, name: str):
+    def __init__(self, x: float, dx: float, cinf: float, D: float, A: float, E0: float, Rsol:float, k: float, alpha: float, name: str):
         self.x = x
         self.dx = dx
         self.cinf = cinf
         self.D = D
         self.A = A
         self.E0 = E0
+        self.Rsol = Rsol
         self.k = k
         self.alpha = alpha
         self.name = name
         self.createCell()
         self.current = []
-        #self.numOfElements = int(self.x / self.dx)
-        #self.cell = np.full(self.numOfElements, self.cinf)
 
     def __str__(self):
         return str(self.cell)
@@ -44,12 +43,32 @@ class Cell:
         global z
         global R
         global T
-        kOx = (self.k / self.dx) * np.exp(self.alpha * z * F * (setVolt - self.E0) / (R * T))
-        kRed = (self.k / self.dx) * np.exp(-1*(1-self.alpha) * z * F * (setVolt - self.E0) / (R * T))
-        cTot = self.cell[0][0] + self.cell[1][0]
-        newOx = ( (kOx * cTot) + (kRed * self.cell[0][0] - kOx * self.cell[1][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
-        newRed = ( (kRed * cTot) + (kOx * self.cell[1][0] - kRed * self.cell[0][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
-        self.current.append(z * F * self.A * self.dx * (newOx - self.cell[0][0]) / self.dt)
+        if self.Rsol == 0:
+            kOx = (self.k / self.dx) * np.exp(self.alpha * z * F * (setVolt - self.E0) / (R * T))
+            kRed = (self.k / self.dx) * np.exp(-1*(1-self.alpha) * z * F * (setVolt - self.E0) / (R * T))
+            cTot = self.cell[0][0] + self.cell[1][0]
+            newOx = ( (kOx * cTot) + (kRed * self.cell[0][0] - kOx * self.cell[1][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
+            newRed = ( (kRed * cTot) + (kOx * self.cell[1][0] - kRed * self.cell[0][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
+            newCurrent = z * F * self.A * self.dx * (newOx - self.cell[0][0]) / self.dt
+        else:
+            epsilon = 1e-4
+            def difference(effectiveVolt: float):
+                kOx = (self.k / self.dx) * np.exp(self.alpha * z * F * (effectiveVolt - self.E0) / (R * T))
+                kRed = (self.k / self.dx) * np.exp(-1*(1-self.alpha) * z * F * (setVolt - self.E0) / (R * T))
+                cTot = self.cell[0][0] + self.cell[1][0]
+                newOx = ( (kOx * cTot) + (kRed * self.cell[0][0] - kOx * self.cell[1][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
+                newCurrent = z * F * self.A * self.dx * (newOx - self.cell[0][0]) / self.dt
+                return setVolt - (effectiveVolt + newCurrent * self.Rsol)
+            #sol = sp.optimize.root_scalar(difference, method = 'toms748', bracket = [-10, 10], x0 = setVolt, rtol = epsilon)
+            sol = sp.optimize.root_scalar(difference, method = 'secant', x0 = setVolt-0.1, x1 = setVolt+0.1, rtol = epsilon)
+            effectiveVolt = sol.root
+            kOx = (self.k / self.dx) * np.exp(self.alpha * z * F * (effectiveVolt - self.E0) / (R * T))
+            kRed = (self.k / self.dx) * np.exp(-1*(1-self.alpha) * z * F * (effectiveVolt - self.E0) / (R * T))
+            cTot = self.cell[0][0] + self.cell[1][0]
+            newOx = ( (kOx * cTot) + (kRed * self.cell[0][0] - kOx * self.cell[1][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
+            newRed = ( (kRed * cTot) + (kOx * self.cell[1][0] - kRed * self.cell[0][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
+            newCurrent = z * F * self.A * self.dx * (newOx - self.cell[0][0]) / self.dt
+        self.current.append(newCurrent)
         self.cell[0][0] = newOx
         self.cell[1][0] = newRed
 
@@ -60,7 +79,6 @@ class Cell:
         transformMatrix[0, 0] = -1
         transformMatrix[self.numOfElements-1, self.numOfElements-1] = -1
         transformMatrix = self.D * dt / (self.dx**2) * transformMatrix
-        # transformMatrix = sp.sparse.linalg.expm(transformMatrix)
         if padeparams[0] == -1:
             transformMatrix = sp.sparse.linalg.expm(transformMatrix)
         else:
@@ -100,10 +118,10 @@ class Experiment:
         period = amplitude / self.sweepRate
         self.voltages = ( ( 4 * amplitude / period ) * abs( ( ( tcoords  - ( (self.startVoltage - self.Vmax) * period / ((self.Vmin - self.Vmax) * 2) )) % period) - ( period / 2 ) ) ) - amplitude + offset
 
-    def addCell(self, x: float, dx: float, cinf: float, D: float, A: float, E0: float, k: float, alpha: float, name: str = "", padeparams: tuple = (-1,)):
+    def addCell(self, x: float, dx: float, cinf: float, D: float, A: float, E0: float, Rsol: float, k: float, alpha: float, name: str = "", padeparams: tuple = (-1,)):
         if not name:
             name = str(len(self.cells))
-        newCell = Cell(x, dx, cinf, D, A, E0, k, alpha, name)
+        newCell = Cell(x, dx, cinf, D, A, E0, Rsol, k, alpha, name)
         newCell.setdt(self.dt, padeparams)
         self.cells.append(newCell)
         self.cellnames.append(name)
@@ -197,16 +215,16 @@ class Simulation:
         self.experiments.append(newExperiment)
         self.experimentnames.append(name)
 
-    def addCell(self, experimentID: str | int, x: float, dx: float, cinf: float, D: float, A: float, E0: float, k: float, alpha: float, name: str = ""):
+    def addCell(self, experimentID: str | int, x: float, dx: float, cinf: float, D: float, A: float, E0: float, Rsol: float, k: float, alpha: float, name: str = ""):
         if type(experimentID) == str:
             index = self.experimentnames.index(experimentID)
         else:
             index = experimentID
         if experimentID != -1:
-            self.experiments[index].addCell(x, dx, cinf, D, A, E0, k, alpha, name, self.padeparams)
+            self.experiments[index].addCell(x, dx, cinf, D, A, E0, Rsol, k, alpha, name, self.padeparams)
         else:
             for experiment in self.experiments:
-                experiment.addCell(x, dx, cinf, D, A, E0, k, alpha, name, self.padeparams)
+                experiment.addCell(x, dx, cinf, D, A, E0, Rsol, k, alpha, name, self.padeparams)
 
     def modifySimulationParameter(self, param: str, newVal: tuple | str):
         setattr(self, param, newVal)
@@ -303,16 +321,16 @@ class Program:
             for simulation in self.simulations:
                 simulation.addExperiment(t, dt, Vmin, Vmax, sweepRate, startVoltage, name)
 
-    def addCell(self, simulationID: str | int, experimentID: str | int, x: float, dx: float, cinf: float, D: float, A: float, E0: float, k: float, alpha: float, name: str = ""):
+    def addCell(self, simulationID: str | int, experimentID: str | int, x: float, dx: float, cinf: float, D: float, A: float, E0: float, Rsol: float, k: float, alpha: float, name: str = ""):
         if type(simulationID) == str:
             index = self.simulationnames.index(simulationID)
         else:
             index = simulationID
         if simulationID != -1:
-            self.simulations[index].addCell(experimentID, x, dx, cinf, D, A, E0, k, alpha, name)
+            self.simulations[index].addCell(experimentID, x, dx, cinf, D, A, E0, Rsol, k, alpha, name)
         else:
             for simulation in self.simulations:
-                simulation.addCell(experimentID, x, dx, cinf, D, A, E0, k, alpha, name)
+                simulation.addCell(experimentID, x, dx, cinf, D, A, E0, Rsol, k, alpha, name)
 
     def modifySimulationParameter(self, simulationID: str | int, param: str, newVal: tuple):
         if type(simulationID) == int:
@@ -373,7 +391,7 @@ class Program:
             concProfile[0].legend()
         for current in currents.values():
             current[0].legend()
-        plt.show()
+        #plt.show()
 
     def plotAllCV(self):
         CVs = {}
@@ -387,6 +405,9 @@ class Program:
                     CVs[cell.name][1].plot(experiment.voltages, cell.current, label = simulation.name + " " + experiment.name + " " + cell.name)
         for CV in CVs.values():
             CV[0].legend()
+        #plt.show()
+
+    def showPlots(self):
         plt.show()
 
     def __str__(self):
