@@ -44,12 +44,7 @@ class Cell:
         global R
         global T
         if self.Rsol == 0:
-            kOx = (self.k / self.dx) * np.exp(self.alpha * z * F * (setVolt - self.E0) / (R * T))
-            kRed = (self.k / self.dx) * np.exp(-1*(1-self.alpha) * z * F * (setVolt - self.E0) / (R * T))
-            cTot = self.cell[0][0] + self.cell[1][0]
-            newOx = ( (kOx * cTot) + (kRed * self.cell[0][0] - kOx * self.cell[1][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
-            newRed = ( (kRed * cTot) + (kOx * self.cell[1][0] - kRed * self.cell[0][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
-            newCurrent = z * F * self.A * self.dx * (newOx - self.cell[0][0]) / self.dt
+            effectiveVolt = setVolt
         else:
             epsilon = 1e-4
             def difference(effectiveVolt: float):
@@ -62,12 +57,12 @@ class Cell:
             #sol = sp.optimize.root_scalar(difference, method = 'toms748', bracket = [-10, 10], x0 = setVolt, rtol = epsilon)
             sol = sp.optimize.root_scalar(difference, method = 'secant', x0 = setVolt-0.1, x1 = setVolt+0.1, rtol = epsilon)
             effectiveVolt = sol.root
-            kOx = (self.k / self.dx) * np.exp(self.alpha * z * F * (effectiveVolt - self.E0) / (R * T))
-            kRed = (self.k / self.dx) * np.exp(-1*(1-self.alpha) * z * F * (effectiveVolt - self.E0) / (R * T))
-            cTot = self.cell[0][0] + self.cell[1][0]
-            newOx = ( (kOx * cTot) + (kRed * self.cell[0][0] - kOx * self.cell[1][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
-            newRed = ( (kRed * cTot) + (kOx * self.cell[1][0] - kRed * self.cell[0][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
-            newCurrent = z * F * self.A * self.dx * (newOx - self.cell[0][0]) / self.dt
+        kOx = (self.k / self.dx) * np.exp(self.alpha * z * F * (effectiveVolt - self.E0) / (R * T))
+        kRed = (self.k / self.dx) * np.exp(-1*(1-self.alpha) * z * F * (effectiveVolt - self.E0) / (R * T))
+        cTot = self.cell[0][0] + self.cell[1][0]
+        newOx = ( (kOx * cTot) + (kRed * self.cell[0][0] - kOx * self.cell[1][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
+        newRed = ( (kRed * cTot) + (kOx * self.cell[1][0] - kRed * self.cell[0][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
+        newCurrent = z * F * self.A * self.dx * (newOx - self.cell[0][0]) / self.dt
         self.current.append(newCurrent)
         self.cell[0][0] = newOx
         self.cell[1][0] = newRed
