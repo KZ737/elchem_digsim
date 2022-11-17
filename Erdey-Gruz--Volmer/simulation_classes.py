@@ -17,7 +17,7 @@ R = 8.3145
 T = 298.15
 
 class Cell:
-    def __init__(self, x: float, dx: float, cinf: float, D: float, A: float, E0: float, Rsol:float, k: float, alpha: float, name: str):
+    def __init__(self, x: float, dx: float, cinf: float, D: list[float], A: float, E0: float, Rsol: float, k: float, alpha: float, name: str):
         self.x = x
         self.dx = dx
         self.cinf = cinf
@@ -67,24 +67,24 @@ class Cell:
         self.cell[0][0] = newOx
         self.cell[1][0] = newRed
 
-    def setdt(self, dt: float, padeparams: tuple):
+    def setdt(self, dt: float, padeparams: tuple[int]):
         self.dt = dt
         transformMatrix = sp.sparse.diags([1, -2, 1], [-1, 0, 1], shape = (self.numOfElements, self.numOfElements))
         transformMatrix = transformMatrix.tocsc()
         transformMatrix[0, 0] = -1
         transformMatrix[self.numOfElements-1, self.numOfElements-1] = -1
-        transformMatrix = self.D * dt / (self.dx**2) * transformMatrix
+        transformMatrices = [diffCoeff * dt / (self.dx**2) * transformMatrix for diffCoeff in self.D]
         if padeparams[0] == -1:
-            transformMatrix = sp.sparse.linalg.expm(transformMatrix)
+            transformMatrices = [sp.sparse.linalg.expm(transformMatrix) for transformMatrix in transformMatrices]
         else:
-            transformMatrix = ea.general_pade(padeparams[0], padeparams[1], transformMatrix)
-        self.__transformMatrix = transformMatrix
+            transformMatrices = [ea.general_pade(padeparams[0], padeparams[1], transformMatrix) for transformMatrix in transformMatrices]
+        self.__transformMatrices = transformMatrices
 
     def propagate(self):
         for i in range(2):
-            self.cell[i] = self.__transformMatrix.dot(self.cell[i])
+            self.cell[i] = self.__transformMatrices[i].dot(self.cell[i])
 
-    def modifyParameter(self, param: str, newVal: str | float):
+    def modifyParameter(self, param: str, newVal: str | float | list[float]):
         setattr(self, param, newVal)
         self.createCell()
 
@@ -113,7 +113,7 @@ class Experiment:
         period = amplitude / self.sweepRate
         self.voltages = ( ( 4 * amplitude / period ) * abs( ( ( tcoords  - ( (self.startVoltage - self.Vmax) * period / ((self.Vmin - self.Vmax) * 2) )) % period) - ( period / 2 ) ) ) - amplitude + offset
 
-    def addCell(self, x: float, dx: float, cinf: float, D: float, A: float, E0: float, Rsol: float, k: float, alpha: float, name: str = "", padeparams: tuple = (-1,)):
+    def addCell(self, x: float, dx: float, cinf: float, D: list[float], A: float, E0: float, Rsol: float, k: float, alpha: float, name: str = "", padeparams: tuple[int] = (-1,)):
         if not name:
             name = str(len(self.cells))
         newCell = Cell(x, dx, cinf, D, A, E0, Rsol, k, alpha, name)
@@ -121,7 +121,7 @@ class Experiment:
         self.cells.append(newCell)
         self.cellnames.append(name)
 
-    def modifyCellParameter(self, cellID: str | int, param: str, newVal: str | float, padeparams: tuple):
+    def modifyCellParameter(self, cellID: str | int, param: str, newVal: str | float | list[float], padeparams: tuple[int]):
         if type(cellID) == int:
             index = cellID
         else:
@@ -132,7 +132,7 @@ class Experiment:
         else:
             self.cells[index].setdt(self.dt, padeparams)
 
-    def modifyExperimentParameter(self, param: str, newVal: str | float, padeparams: tuple):
+    def modifyExperimentParameter(self, param: str, newVal: str | float, padeparams: tuple[int]):
         setattr(self, param, newVal)
         if param == "t":
             self.numOfTimesteps = int(self.t / self.dt)
@@ -197,7 +197,7 @@ class Experiment:
 
 
 class Simulation:
-    def __init__(self, name: str, padeparams: tuple = (-1,)):
+    def __init__(self, name: str, padeparams: tuple[int] = (-1,)):
         self.padeparams = padeparams
         self.name = name
         self.experiments = []
@@ -210,7 +210,7 @@ class Simulation:
         self.experiments.append(newExperiment)
         self.experimentnames.append(name)
 
-    def addCell(self, experimentID: str | int, x: float, dx: float, cinf: float, D: float, A: float, E0: float, Rsol: float, k: float, alpha: float, name: str = ""):
+    def addCell(self, experimentID: str | int, x: float, dx: float, cinf: float, D: list[float], A: float, E0: float, Rsol: float, k: float, alpha: float, name: str = ""):
         if type(experimentID) == str:
             index = self.experimentnames.index(experimentID)
         else:
@@ -221,7 +221,7 @@ class Simulation:
             for experiment in self.experiments:
                 experiment.addCell(x, dx, cinf, D, A, E0, Rsol, k, alpha, name, self.padeparams)
 
-    def modifySimulationParameter(self, param: str, newVal: tuple | str):
+    def modifySimulationParameter(self, param: str, newVal: tuple[int] | str):
         setattr(self, param, newVal)
         for experiment in self.experiments:
             experiment.modifyExperimentParameter("dt", experiment.dt, self.padeparams)
@@ -235,7 +235,7 @@ class Simulation:
         if param == "name":
             self.experimentnames[index] = newVal
 
-    def modifyCellParameter(self, experimentID: str | int, cellID: str | int, param: str, newVal: float):
+    def modifyCellParameter(self, experimentID: str | int, cellID: str | int, param: str, newVal: str | float | list[float]):
         if type(experimentID) == int:
             index = experimentID
         else:
@@ -298,7 +298,7 @@ class Program:
         self.simulations = []
         self.simulationnames = []
     
-    def addSimulation(self, name: str, padeparams: tuple = (-1,)):
+    def addSimulation(self, name: str, padeparams: tuple[int] = (-1,)):
         if not name:
             name = str(len(self.simulations))
         newSimulation = Simulation(name, padeparams)
@@ -316,7 +316,7 @@ class Program:
             for simulation in self.simulations:
                 simulation.addExperiment(t, dt, Vmin, Vmax, sweepRate, startVoltage, name)
 
-    def addCell(self, simulationID: str | int, experimentID: str | int, x: float, dx: float, cinf: float, D: float, A: float, E0: float, Rsol: float, k: float, alpha: float, name: str = ""):
+    def addCell(self, simulationID: str | int, experimentID: str | int, x: float, dx: float, cinf: float, D: list[float], A: float, E0: float, Rsol: float, k: float, alpha: float, name: str = ""):
         if type(simulationID) == str:
             index = self.simulationnames.index(simulationID)
         else:
@@ -327,7 +327,7 @@ class Program:
             for simulation in self.simulations:
                 simulation.addCell(experimentID, x, dx, cinf, D, A, E0, Rsol, k, alpha, name)
 
-    def modifySimulationParameter(self, simulationID: str | int, param: str, newVal: tuple):
+    def modifySimulationParameter(self, simulationID: str | int, param: str, newVal: str | tuple[int]):
         if type(simulationID) == int:
             index = simulationID
         else:
@@ -336,14 +336,14 @@ class Program:
         if param == "name":
             self.simulationnames[index] = newVal
     
-    def modifyExperimentParameter(self, simulationID: str | int, experimentID: str | int, param: str, newVal: float):
+    def modifyExperimentParameter(self, simulationID: str | int, experimentID: str | int, param: str, newVal: str | float):
         if type(simulationID) == int:
             index = simulationID
         else:
             index = self.simulationnames.index(simulationID)
         self.simulations[index].modifyExperimentParameter(experimentID, param, newVal)
 
-    def modifyCellParameter(self, simulationID: str | int, experimentID: str | int, cellID: str | int, param: str, newVal: float):
+    def modifyCellParameter(self, simulationID: str | int, experimentID: str | int, cellID: str | int, param: str, newVal: str | float | list[float]):
         if type(simulationID) == int:
             index = simulationID
         else:

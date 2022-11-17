@@ -10,7 +10,7 @@ x = 0.1         # cm
 dx = 0.001      # cm = 10 um
 t = 100         # s
 dt = 0.001      # s = 1 ms
-D = 1e-6        # cm2/s
+D = [1e-6, 1e-6]        # cm2/s
 cinf = 1e-6     # mol/cm3
 E0 = 0          # V
 k = 1e-6        # s-1
