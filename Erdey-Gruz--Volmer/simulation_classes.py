@@ -55,7 +55,7 @@ class Cell:
                 newCurrent = z * F * self.A * self.dx * (newOx - self.cell[0][0]) / self.dt
                 return setVolt - (effectiveVolt + newCurrent * self.Rsol)
             #sol = sp.optimize.root_scalar(difference, method = 'toms748', bracket = [-10, 10], x0 = setVolt, rtol = epsilon)
-            sol = sp.optimize.root_scalar(difference, method = 'secant', x0 = setVolt-0.1, x1 = setVolt+0.1, rtol = epsilon)
+            sol = sp.optimize.root_scalar(difference, method = 'secant', x0 = setVolt-1, x1 = setVolt+1, rtol = epsilon)
             effectiveVolt = sol.root
         kOx = (self.k / self.dx) * np.exp(self.alpha * z * F * (effectiveVolt - self.E0) / (R * T))
         kRed = (self.k / self.dx) * np.exp(-1*(1-self.alpha) * z * F * (effectiveVolt - self.E0) / (R * T))
@@ -110,8 +110,12 @@ class Experiment:
         tcoords = np.linspace(0, self.t, int(self.t/self.dt), False)
         amplitude = (self.Vmax - self.Vmin) / 2
         offset = (self.Vmax + self.Vmin) / 2
-        period = amplitude / self.sweepRate
+        period = 4 * amplitude / self.sweepRate
         self.voltages = ( ( 4 * amplitude / period ) * abs( ( ( tcoords  - ( (self.startVoltage - self.Vmax) * period / ((self.Vmin - self.Vmax) * 2) )) % period) - ( period / 2 ) ) ) - amplitude + offset
+        ''' for debug purposes '''
+        #plt.plot(tcoords, self.voltages)
+        #plt.show()
+
 
     def addCell(self, x: float, dx: float, cinf: float, D: list[float], A: float, E0: float, Rsol: float, k: float, alpha: float, name: str = "", padeparams: tuple[int] = (-1,)):
         if not name:
@@ -398,6 +402,19 @@ class Program:
                         newCVFigure.suptitle('Cell ' + cell.name)
                         CVs.update({cell.name: [newCVFigure, newCVSubplot]})
                     CVs[cell.name][1].plot(experiment.voltages, cell.current, label = simulation.name + " " + experiment.name + " " + cell.name)
+        for CV in CVs.values():
+            CV[0].legend()
+        #plt.show()
+
+    def plotAllCVInExp(self):
+        CVs = {}
+        for simulation in self.simulations:
+            for experiment in simulation.experiments:
+                newCVFigure, newCVSubplot = plt.subplots()
+                newCVFigure.suptitle('Experiment ' + experiment.name)
+                CVs.update({experiment.name: [newCVFigure, newCVSubplot]})
+                for cell in experiment.cells:
+                    CVs[experiment.name][1].plot(experiment.voltages, cell.current, label = simulation.name + " " + experiment.name + " " + cell.name)
         for CV in CVs.values():
             CV[0].legend()
         #plt.show()

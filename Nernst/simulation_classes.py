@@ -93,7 +93,7 @@ class Experiment:
         tcoords = np.linspace(0, self.t, int(self.t/self.dt), False)
         amplitude = (self.Vmax - self.Vmin) / 2
         offset = (self.Vmax + self.Vmin) / 2
-        period = amplitude / self.sweepRate
+        period = 4 * amplitude / self.sweepRate
         self.voltages = ( ( 4 * amplitude / period ) * abs( ( ( tcoords  - ( (self.startVoltage - self.Vmax) * period / ((self.Vmin - self.Vmax) * 2) )) % period) - ( period / 2 ) ) ) - amplitude + offset
 
     def addCell(self, x: float, dx: float, cinf: float, D: float, E0: float, name: str = "", padeparams: tuple = (-1,)):
