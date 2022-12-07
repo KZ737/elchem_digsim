@@ -17,7 +17,7 @@ R = 8.3145
 T = 298.15
 
 class Cell:
-    def __init__(self, x: float, dx: float, cinf: float, D: list[float], A: float, E0: float, Rsol: float, k: float, alpha: float, name: str):
+    def __init__(self, x: float, dx: float, cinf: float, D: list[float], A: float, E0: float, Rsol: float, k: float, alpha: float, startVolt: float, name: str):
         self.x = x
         self.dx = dx
         self.cinf = cinf
@@ -27,6 +27,7 @@ class Cell:
         self.Rsol = Rsol
         self.k = k
         self.alpha = alpha
+        self.voltages = [startVolt+0.001]
         self.name = name
         self.createCell()
         self.current = []
@@ -46,17 +47,24 @@ class Cell:
         if self.Rsol == 0:
             effectiveVolt = setVolt
         else:
-            epsilon = 1e-4
+            epsilon = 1e-6
+            #if setVolt * self.voltages[-1] < 0:
+            #    startVolt = setVolt
+            #else:
+            #    startVolt = self.voltages[-1]
             def difference(effectiveVolt: float):
                 kOx = (self.k / self.dx) * np.exp(self.alpha * z * F * (effectiveVolt - self.E0) / (R * T))
-                kRed = (self.k / self.dx) * np.exp(-1*(1-self.alpha) * z * F * (setVolt - self.E0) / (R * T))
+                kRed = (self.k / self.dx) * np.exp(-1*(1-self.alpha) * z * F * (effectiveVolt - self.E0) / (R * T))
                 cTot = self.cell[0][0] + self.cell[1][0]
                 newOx = ( (kOx * cTot) + (kRed * self.cell[0][0] - kOx * self.cell[1][0])*np.exp( -1 * (kOx + kRed) * dt ) ) / (kOx + kRed)
                 newCurrent = z * F * self.A * self.dx * (newOx - self.cell[0][0]) / self.dt
                 return setVolt - (effectiveVolt + newCurrent * self.Rsol)
-            #sol = sp.optimize.root_scalar(difference, method = 'toms748', bracket = [-10, 10], x0 = setVolt, rtol = epsilon)
-            sol = sp.optimize.root_scalar(difference, method = 'secant', x0 = setVolt-1, x1 = setVolt+1, rtol = epsilon)
+            #sol = sp.optimize.root_scalar(difference, method = 'toms748', bracket = [self.voltages[-1]-1, self.voltages[-1]+1], x0 = setVolt, rtol = epsilon)
+            sol = sp.optimize.root_scalar(difference, method = 'secant', x0 = self.voltages[-1], x1 = setVolt, rtol = epsilon)
             effectiveVolt = sol.root
+            #sol = sp.optimize.minimize(differencesq, x0 = setVolt, method = 'Nelder-Mead', tol = epsilon)
+            #effectiveVolt = sol.x
+        self.voltages.append(effectiveVolt)
         kOx = (self.k / self.dx) * np.exp(self.alpha * z * F * (effectiveVolt - self.E0) / (R * T))
         kRed = (self.k / self.dx) * np.exp(-1*(1-self.alpha) * z * F * (effectiveVolt - self.E0) / (R * T))
         cTot = self.cell[0][0] + self.cell[1][0]
@@ -116,11 +124,10 @@ class Experiment:
         #plt.plot(tcoords, self.voltages)
         #plt.show()
 
-
     def addCell(self, x: float, dx: float, cinf: float, D: list[float], A: float, E0: float, Rsol: float, k: float, alpha: float, name: str = "", padeparams: tuple[int] = (-1,)):
         if not name:
             name = str(len(self.cells))
-        newCell = Cell(x, dx, cinf, D, A, E0, Rsol, k, alpha, name)
+        newCell = Cell(x, dx, cinf, D, A, E0, Rsol, k, alpha, self.startVoltage, name)
         newCell.setdt(self.dt, padeparams)
         self.cells.append(newCell)
         self.cellnames.append(name)
@@ -157,6 +164,8 @@ class Experiment:
         for voltage in self.voltages:
             self.electrodeReaction(voltage)
             self.propagate()
+        for cell in self.cells:
+            cell.voltages = cell.voltages[1:]
 
     def __str__(self):
         if not self.cells:
@@ -179,6 +188,7 @@ class Experiment:
             plt.plot(xcoords, cell.cell[0], label = cell.name+" Ox")
             plt.plot(xcoords, cell.cell[1], label = cell.name+" Red")
         plt.legend()
+        plt.grid()
         plt.show()
 
     def plotNoShow(self, plot: plt.figure):
@@ -187,17 +197,20 @@ class Experiment:
             plt.plot(xcoords, cell.cell[0], label = cell.name+" Ox")
             plt.plot(xcoords, cell.cell[1], label = cell.name+" Red")
         plot.legend()
+        plot.grid()
 
     def plotCV(self):
         for cell in self.cells:
             plt.plot(self.voltages, cell.current, label = cell.name)
         plt.legend()
+        plt.grid()
         plt.show()
     
     def plotCVNoShow(self, plot: plt.figure):
         for cell in self.cells:
-            plt.plot(self.voltages, cell.current, label = cell.name)
-        plt.legend()
+            plot.plot(self.voltages, cell.current, label = cell.name)
+        plot.legend()
+        plot.grid()
 
 
 class Simulation:
@@ -271,6 +284,7 @@ class Simulation:
             figure.suptitle('Simulation ' + self.name + ': ' + repr(experiment))
             subplot = figure.add_subplot()
             experiment.plotNoShow(subplot)
+            subplot.grid()
         plt.show()
 
     def plotNoShow(self):
@@ -279,6 +293,7 @@ class Simulation:
             figure.suptitle('Simulation ' + self.name + ': ' + repr(experiment))
             subplot = figure.add_subplot()
             experiment.plotNoShow(subplot)
+            subplot.grid()
 
     def plotCV(self):
         for experiment in self.experiments:
@@ -286,6 +301,7 @@ class Simulation:
             figure.suptitle('Simulation ' + self.name + ': ' + repr(experiment))
             subplot = figure.add_subplot()
             experiment.plotCVNoShow(subplot)
+            subplot.grid()
         plt.show()
 
     def plotNoShow(self):
@@ -294,6 +310,7 @@ class Simulation:
             figure.suptitle('Simulation ' + self.name + ': ' + repr(experiment))
             subplot = figure.add_subplot()
             experiment.plotCVNoShow(subplot)
+            subplot.grid()
 
         
 
@@ -388,8 +405,10 @@ class Program:
                     currents[cell.name][1].plot(tcoords, cell.current, label = simulation.name + " " + experiment.name + " " + cell.name)
         for concProfile in concProfiles.values():
             concProfile[0].legend()
+            concProfile[1].grid()
         for current in currents.values():
             current[0].legend()
+            current[1].grid()
         #plt.show()
 
     def plotAllCV(self):
@@ -404,6 +423,7 @@ class Program:
                     CVs[cell.name][1].plot(experiment.voltages, cell.current, label = simulation.name + " " + experiment.name + " " + cell.name)
         for CV in CVs.values():
             CV[0].legend()
+            CV[1].grid()
         #plt.show()
 
     def plotAllCVInExp(self):
@@ -417,6 +437,7 @@ class Program:
                     CVs[experiment.name][1].plot(experiment.voltages, cell.current, label = simulation.name + " " + experiment.name + " " + cell.name)
         for CV in CVs.values():
             CV[0].legend()
+            CV[1].grid()
         #plt.show()
 
     def showPlots(self):
